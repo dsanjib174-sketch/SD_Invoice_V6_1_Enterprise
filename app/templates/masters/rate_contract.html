@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<section>
+<h2>Rate of Contract</h2>
+
+<h3>1. Vendor Details</h3>
+<form method="POST" class="grid">
+<input type="hidden" name="action" value="save_vendor">
+<input name="vendor_name" placeholder="Vendor / Customer Name" required>
+<input name="vendor_email" placeholder="Email">
+<input name="vendor_mobile" placeholder="Mobile">
+<input name="vendor_gst" placeholder="GSTIN">
+<input name="vendor_pan" placeholder="PAN No">
+<input name="vendor_state" placeholder="State">
+<input name="vendor_state_code" placeholder="State Code">
+<input name="vendor_address" placeholder="Address">
+<button type="submit">Save Vendor</button>
+</form>
+
+<br>
+<h3>2. Rate Contract Details</h3>
+<form method="POST" class="grid">
+<input type="hidden" name="action" value="save_contract">
+<select name="vendor_name" required><option value="">Select Vendor / Customer</option>{% for v in vendors %}<option value="{{ v.vendor_name }}">{{ v.vendor_name }}</option>{% endfor %}</select>
+<input name="product_name" placeholder="Product / Service Name" required>
+<input name="hsn_code" placeholder="HSN / SAC Code">
+<input name="unit" placeholder="UOM">
+<input name="rate" type="number" step="0.01" placeholder="Contract Rate" required>
+<input name="gst_percent" type="number" step="0.01" placeholder="GST %">
+<input name="valid_from" type="date">
+<input name="valid_to" type="date">
+<input name="remarks" placeholder="Remarks / Terms">
+<button type="submit">Save Rate Contract</button>
+</form>
+
+<br>
+<h3>Saved Rate Contracts</h3>
+<table border="1" cellpadding="8" cellspacing="0" width="100%">
+<tr><th>Vendor</th><th>Product</th><th>HSN/SAC</th><th>UOM</th><th>Rate</th><th>GST %</th><th>Valid From</th><th>Valid To</th><th>Source</th><th>Status</th><th>Remarks</th><th>Action</th></tr>
+{% if contracts %}
+{% for c in contracts %}
+<tr>
+<form method="POST">
+<input type="hidden" name="action" value="update_contract">
+<input type="hidden" name="contract_id" value="{{ c.id }}">
+<td><input name="vendor_name" value="{{ c.vendor_name }}" required></td>
+<td><input name="product_name" value="{{ c.product_name }}" required></td>
+<td><input name="hsn_code" value="{{ c.hsn_code }}"></td>
+<td><input name="unit" value="{{ c.unit }}"></td>
+<td><input name="rate" type="number" step="0.01" value="{{ c.rate }}" required></td>
+<td><input name="gst_percent" type="number" step="0.01" value="{{ c.gst_percent }}"></td>
+<td><input name="valid_from" type="date" value="{{ c.valid_from }}"></td>
+<td><input name="valid_to" type="date" value="{{ c.valid_to }}"></td>
+<td>{{ c.source }}</td>
+<td><select name="status"><option value="Active" {% if c.status == 'Active' %}selected{% endif %}>Active</option><option value="Inactive" {% if c.status == 'Inactive' %}selected{% endif %}>Inactive</option></select></td>
+<td><input name="remarks" value="{{ c.remarks }}"></td>
+<td><button type="submit">Update</button></td>
+</form>
+</tr>
+{% endfor %}
+{% else %}<tr><td colspan="12">No rate contracts yet.</td></tr>{% endif %}
+</table>
+</section>
+{% endblock %}
