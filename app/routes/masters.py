@@ -4,7 +4,9 @@ import os, json, uuid
 from datetime import datetime
 
 masters_bp = Blueprint("masters", __name__)
+
 VENDORS_FILE = "vendors.json"
+CUSTOMERS_FILE = "customers.json"
 ROC_FILE = "rate_contracts.json"
 
 
@@ -34,55 +36,94 @@ def is_superadmin():
     return session.get("login_type") == "superadmin" or session.get("role") == "superadmin"
 
 
-def visible(items):
-    if is_superadmin():
-        return items
-    email = current_user_email()
-    return [i for i in items if i.get("client_email") == email or i.get("created_by") == email]
+def load_vendors():
+    return load_json(VENDORS_FILE)
+
+
+def load_customers():
+    return load_json(CUSTOMERS_FILE)
 
 
 @masters_bp.route("/masters")
 @login_required
-def masters():
-    return render_template("masters/masters.html")
+def masters_home():
+    return render_template("masters/index.html")
+
+
+@masters_bp.route("/customer-master", methods=["GET", "POST"])
+@login_required
+def customer_master():
+    customers = load_customers()
+    user_email = current_user_email()
+
+    if request.method == "POST":
+        company_name = request.form.get("company_name", "").strip()
+        gst_number = request.form.get("gst_number", "").strip()
+        pan_number = request.form.get("pan_number", "").strip()
+        customer_address = request.form.get("customer_address", "").strip()
+
+        if not company_name:
+            flash("Company name is required.", "error")
+            return redirect(url_for("masters.customer_master"))
+
+        customers.insert(0, {
+            "id": uuid.uuid4().hex,
+            "company_name": company_name,
+            "gst_number": gst_number,
+            "pan_number": pan_number,
+            "customer_address": customer_address,
+            "client_email": user_email,
+            "created_by": user_email,
+            "created_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")
+        })
+
+        save_json(CUSTOMERS_FILE, customers)
+        flash("Customer saved successfully.", "success")
+        return redirect(url_for("masters.customer_master"))
+
+    if not is_superadmin():
+        customers = [c for c in customers if c.get("client_email") == user_email]
+
+    return render_template("masters/customer_master.html", customers=customers)
 
 
 @masters_bp.route("/rate-contract", methods=["GET", "POST"])
 @login_required
 def rate_contract():
-    vendors = load_json(VENDORS_FILE)
+    vendors = load_vendors()
+    customers = load_customers()
     contracts = load_json(ROC_FILE)
     user_email = current_user_email()
 
     if request.method == "POST":
         action = request.form.get("action")
+
         if action == "save_vendor":
-            vendor_name = request.form.get("vendor_name", "").strip()
-            if not vendor_name:
-                flash("Vendor name is required.", "error")
-                return redirect(url_for("masters.rate_contract"))
             vendors.insert(0, {
                 "id": uuid.uuid4().hex,
-                "vendor_name": vendor_name,
+                "vendor_name": request.form.get("vendor_name", "").strip(),
                 "vendor_email": request.form.get("vendor_email", "").strip(),
                 "vendor_mobile": request.form.get("vendor_mobile", "").strip(),
                 "vendor_gst": request.form.get("vendor_gst", "").strip(),
                 "vendor_pan": request.form.get("vendor_pan", "").strip(),
-                "vendor_state": request.form.get("vendor_state", "").strip(),
-                "vendor_state_code": request.form.get("vendor_state_code", "").strip(),
                 "vendor_address": request.form.get("vendor_address", "").strip(),
                 "client_email": user_email,
                 "created_by": user_email,
                 "created_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")
             })
+
             save_json(VENDORS_FILE, vendors)
             flash("Vendor saved successfully.", "success")
+
         elif action == "save_contract":
-            if not request.form.get("vendor_name") or not request.form.get("product_name") or not request.form.get("rate"):
-                flash("Vendor, product/service and rate are required.", "error")
-                return redirect(url_for("masters.rate_contract"))
             contracts.insert(0, {
                 "id": uuid.uuid4().hex,
+
+                "customer_name": request.form.get("customer_name", "").strip(),
+                "customer_gst": request.form.get("customer_gst", "").strip(),
+                "customer_pan": request.form.get("customer_pan", "").strip(),
+                "customer_address": request.form.get("customer_address", "").strip(),
+
                 "vendor_name": request.form.get("vendor_name", "").strip(),
                 "product_name": request.form.get("product_name", "").strip(),
                 "hsn_code": request.form.get("hsn_code", "").strip(),
@@ -92,37 +133,57 @@ def rate_contract():
                 "valid_from": request.form.get("valid_from", "").strip(),
                 "valid_to": request.form.get("valid_to", "").strip(),
                 "remarks": request.form.get("remarks", "").strip(),
+
                 "source": "Manual",
                 "status": "Active",
                 "client_email": user_email,
                 "created_by": user_email,
                 "created_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")
             })
+
             save_json(ROC_FILE, contracts)
             flash("Rate contract saved successfully.", "success")
+
         elif action == "update_contract":
-            cid = request.form.get("contract_id")
+            contract_id = request.form.get("contract_id")
+
             for c in contracts:
-                if c.get("id") == cid:
-                    if not is_superadmin() and c.get("client_email") != user_email and c.get("created_by") != user_email:
+                if c.get("id") == contract_id:
+                    if not is_superadmin() and c.get("client_email") != user_email:
                         flash("You cannot update another client's contract.", "error")
                         return redirect(url_for("masters.rate_contract"))
-                    c.update({
-                        "vendor_name": request.form.get("vendor_name", "").strip(),
-                        "product_name": request.form.get("product_name", "").strip(),
-                        "hsn_code": request.form.get("hsn_code", "").strip(),
-                        "unit": request.form.get("unit", "").strip(),
-                        "rate": request.form.get("rate", "").strip(),
-                        "gst_percent": request.form.get("gst_percent", "").strip(),
-                        "valid_from": request.form.get("valid_from", "").strip(),
-                        "valid_to": request.form.get("valid_to", "").strip(),
-                        "remarks": request.form.get("remarks", "").strip(),
-                        "status": request.form.get("status", "Active").strip(),
-                        "updated_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")
-                    })
+
+                    c["customer_name"] = request.form.get("customer_name", "").strip()
+                    c["customer_gst"] = request.form.get("customer_gst", "").strip()
+                    c["customer_pan"] = request.form.get("customer_pan", "").strip()
+                    c["customer_address"] = request.form.get("customer_address", "").strip()
+
+                    c["vendor_name"] = request.form.get("vendor_name", "").strip()
+                    c["product_name"] = request.form.get("product_name", "").strip()
+                    c["hsn_code"] = request.form.get("hsn_code", "").strip()
+                    c["unit"] = request.form.get("unit", "").strip()
+                    c["rate"] = request.form.get("rate", "").strip()
+                    c["gst_percent"] = request.form.get("gst_percent", "").strip()
+                    c["valid_from"] = request.form.get("valid_from", "").strip()
+                    c["valid_to"] = request.form.get("valid_to", "").strip()
+                    c["remarks"] = request.form.get("remarks", "").strip()
+                    c["status"] = request.form.get("status", "Active")
+                    c["updated_at"] = datetime.now().strftime("%d-%m-%Y %I:%M %p")
                     break
+
             save_json(ROC_FILE, contracts)
             flash("Rate contract updated successfully.", "success")
+
         return redirect(url_for("masters.rate_contract"))
 
-    return render_template("masters/rate_contract.html", vendors=visible(vendors), contracts=visible(contracts), is_superadmin=is_superadmin())
+    if not is_superadmin():
+        vendors = [v for v in vendors if v.get("client_email") == user_email]
+        customers = [c for c in customers if c.get("client_email") == user_email]
+        contracts = [c for c in contracts if c.get("client_email") == user_email]
+
+    return render_template(
+        "masters/rate_contract.html",
+        vendors=vendors,
+        customers=customers,
+        contracts=contracts
+    )
