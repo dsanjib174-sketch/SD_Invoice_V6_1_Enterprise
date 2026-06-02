@@ -6,6 +6,8 @@
 
   <form method="POST" class="grid">
     <input name="company_name" placeholder="Company Name" required>
+    <input name="customer_email" placeholder="Customer Email">
+    <input name="customer_mobile" placeholder="Customer Mobile Number">
     <input name="gst_number" placeholder="GST Number">
     <input name="pan_number" placeholder="PAN Number">
     <textarea name="customer_address" placeholder="Customer Address"></textarea>
@@ -20,8 +22,10 @@
   <table border="1" cellpadding="8" cellspacing="0" width="100%">
     <tr>
       <th>Company Name</th>
-      <th>GST Number</th>
-      <th>PAN Number</th>
+      <th>Email</th>
+      <th>Mobile</th>
+      <th>GST</th>
+      <th>PAN</th>
       <th>Address</th>
     </tr>
 
@@ -29,6 +33,8 @@
       {% for c in customers %}
       <tr>
         <td>{{ c.company_name }}</td>
+        <td>{{ c.customer_email }}</td>
+        <td>{{ c.customer_mobile }}</td>
         <td>{{ c.gst_number }}</td>
         <td>{{ c.pan_number }}</td>
         <td>{{ c.customer_address }}</td>
@@ -36,7 +42,7 @@
       {% endfor %}
     {% else %}
       <tr>
-        <td colspan="4">No customers found.</td>
+        <td colspan="6">No customers found.</td>
       </tr>
     {% endif %}
   </table>
