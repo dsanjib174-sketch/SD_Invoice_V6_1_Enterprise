@@ -4,12 +4,12 @@ import os, json, uuid
 from datetime import datetime
 
 documents_bp = Blueprint("documents", __name__)
+
 QUOTATION_FILE = "quotations.json"
 PROFORMA_FILE = "proformas.json"
 INVOICE_FILE = "invoices.json"
 DELIVERY_CHALLAN_FILE = "delivery_challans.json"
 ROC_FILE = "rate_contracts.json"
-VENDORS_FILE = "vendors.json"
 
 
 def _json_path(filename):
@@ -39,84 +39,38 @@ def is_superadmin():
 
 
 def get_financial_year():
-    today = datetime.now(); year = today.year
-    return f"{str(year)[-2:]}-{str(year + 1)[-2:]}" if today.month >= 4 else f"{str(year - 1)[-2:]}-{str(year)[-2:]}"
+    today = datetime.now()
+    year = today.year
+    if today.month >= 4:
+        return f"{str(year)[-2:]}-{str(year + 1)[-2:]}"
+    return f"{str(year - 1)[-2:]}-{str(year)[-2:]}"
 
 
 def generate_doc_no(prefix, existing_docs):
-    return f"SD/{prefix}/{get_financial_year()}/{str(len(existing_docs) + 1).zfill(3)}"
+    fy = get_financial_year()
+    count = len(existing_docs) + 1
+    return f"SD/{prefix}/{fy}/{str(count).zfill(3)}"
 
 
-def load_roc(): return load_json(ROC_FILE)
-def load_vendors(): return load_json(VENDORS_FILE)
+def load_roc():
+    return load_json(ROC_FILE)
+
+
+def get_customer_names():
+    contracts = load_roc()
+    customers = sorted(set([
+        c.get("customer_name", "")
+        for c in contracts
+        if c.get("customer_name") and c.get("status") == "Active"
+    ]))
+    return customers
 
 
 def visible_data(data):
     if is_superadmin():
         return data
-    email = current_user_email()
-    return [d for d in data if d.get("client_email") == email or d.get("created_by") == email]
-
-
-def active_contracts():
-    data = visible_data(load_roc())
-    return [c for c in data if c.get("status", "Active") == "Active"]
-
-
-def active_vendors():
-    names = sorted({c.get("vendor_name", "") for c in active_contracts() if c.get("vendor_name")})
-    return names
-
-
-def save_document(file_name, number_field, number_prefix, status):
-    docs = load_json(file_name)
-    doc_no = request.form.get(number_field, "").strip() or generate_doc_no(number_prefix, docs)
-    item = {
-        "id": uuid.uuid4().hex,
-        number_field: doc_no,
-        "vendor_name": request.form.get("vendor_name", "").strip(),
-        "customer_name": request.form.get("customer_name", "").strip(),
-        "gstin": request.form.get("gstin", "").strip(),
-        "pan": request.form.get("pan", "").strip(),
-        "state": request.form.get("state", "").strip(),
-        "state_code": request.form.get("state_code", "").strip(),
-        "email": request.form.get("email", "").strip(),
-        "phone": request.form.get("phone", "").strip(),
-        "billing_address": request.form.get("billing_address", "").strip(),
-        "shipping_address": request.form.get("shipping_address", "").strip(),
-        "product_name": request.form.get("product_name", "").strip(),
-        "description": request.form.get("description", "").strip(),
-        "hsn_code": request.form.get("hsn_code", "").strip(),
-        "unit": request.form.get("unit", "").strip(),
-        "qty": request.form.get("qty", "1").strip(),
-        "rate": request.form.get("rate", "0").strip(),
-        "discount": request.form.get("discount", "0").strip(),
-        "gst_percent": request.form.get("gst_percent", "0").strip(),
-        "taxable_amount": request.form.get("taxable_amount", "0").strip(),
-        "cgst": request.form.get("cgst", "0").strip(),
-        "sgst": request.form.get("sgst", "0").strip(),
-        "igst": request.form.get("igst", "0").strip(),
-        "total_gst": request.form.get("total_gst", "0").strip(),
-        "grand_total": request.form.get("grand_total", "0").strip(),
-        "remarks": request.form.get("remarks", "").strip(),
-        "status": status,
-        "client_email": current_user_email(),
-        "created_by": current_user_email(),
-        "created_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")
-    }
-    docs.insert(0, item)
-    save_json(file_name, docs)
-    return item
-
-
-def common_context(file_name, prefix):
-    docs = load_json(file_name)
-    return {
-        "vendors": active_vendors(),
-        "contracts": active_contracts(),
-        "vendor_records": visible_data(load_vendors()),
-        "doc_no": generate_doc_no(prefix, docs)
-    }
+    user_email = current_user_email()
+    return [d for d in data if d.get("client_email") == user_email]
 
 
 @documents_bp.route("/quotation", methods=["GET", "POST"])
@@ -124,80 +78,193 @@ def common_context(file_name, prefix):
 def quotation():
     quotations = load_json(QUOTATION_FILE)
     contracts = load_roc()
+    customers = get_customer_names()
     user_email = current_user_email()
+
     if request.method == "POST":
         action = request.form.get("action")
+
         if action == "save_quotation":
-            save_document(QUOTATION_FILE, "quotation_no", "QT", "Pending")
+            quotation_no = request.form.get("quotation_no", "").strip() or generate_doc_no("QT", quotations)
+
+            quotations.insert(0, {
+                "id": uuid.uuid4().hex,
+                "quotation_no": quotation_no,
+                "customer_name": request.form.get("customer_name", "").strip(),
+                "product_name": request.form.get("product_name", "").strip(),
+                "hsn_code": request.form.get("hsn_code", "").strip(),
+                "unit": request.form.get("unit", "").strip(),
+                "qty": request.form.get("qty", "1").strip(),
+                "rate": request.form.get("rate", "0").strip(),
+                "gst_percent": request.form.get("gst_percent", "0").strip(),
+                "taxable_amount": request.form.get("taxable_amount", "0").strip(),
+                "cgst": request.form.get("cgst", "0").strip(),
+                "sgst": request.form.get("sgst", "0").strip(),
+                "igst": request.form.get("igst", "0").strip(),
+                "total_gst": request.form.get("total_gst", "0").strip(),
+                "grand_total": request.form.get("grand_total", "0").strip(),
+                "remarks": request.form.get("remarks", "").strip(),
+                "status": "Pending",
+                "client_email": user_email,
+                "created_by": user_email,
+                "created_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")
+            })
+
+            save_json(QUOTATION_FILE, quotations)
             flash("Quotation saved successfully.", "success")
-        elif action == "update_quotation":
-            qid = request.form.get("quotation_id")
-            for q in quotations:
-                if q.get("id") == qid:
-                    if q.get("status") == "Approved":
-                        flash("Approved quotation cannot be edited.", "error"); return redirect(url_for("documents.quotation"))
-                    q.update({"quotation_no": request.form.get("quotation_no", "").strip(), "vendor_name": request.form.get("vendor_name", "").strip(), "customer_name": request.form.get("customer_name", "").strip(), "product_name": request.form.get("product_name", "").strip(), "hsn_code": request.form.get("hsn_code", "").strip(), "unit": request.form.get("unit", "").strip(), "qty": request.form.get("qty", "1").strip(), "rate": request.form.get("rate", "0").strip(), "gst_percent": request.form.get("gst_percent", "0").strip(), "taxable_amount": request.form.get("taxable_amount", "0").strip(), "cgst": request.form.get("cgst", "0").strip(), "sgst": request.form.get("sgst", "0").strip(), "igst": request.form.get("igst", "0").strip(), "total_gst": request.form.get("total_gst", "0").strip(), "grand_total": request.form.get("grand_total", "0").strip(), "remarks": request.form.get("remarks", "").strip(), "updated_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")}); break
-            save_json(QUOTATION_FILE, quotations); flash("Quotation updated successfully.", "success")
-        elif action == "approve_quotation":
-            qid = request.form.get("quotation_id")
-            for q in quotations:
-                if q.get("id") == qid:
-                    if q.get("status") == "Approved": flash("Quotation already approved.", "error"); return redirect(url_for("documents.quotation"))
-                    q["status"] = "Approved"; q["approved_by"] = user_email; q["approved_at"] = datetime.now().strftime("%d-%m-%Y %I:%M %p")
-                    contracts.insert(0, {"id": uuid.uuid4().hex, "vendor_name": q.get("vendor_name", ""), "product_name": q.get("product_name", ""), "hsn_code": q.get("hsn_code", ""), "unit": q.get("unit", ""), "rate": q.get("rate", ""), "gst_percent": q.get("gst_percent", ""), "valid_from": datetime.now().strftime("%Y-%m-%d"), "valid_to": "", "remarks": "Auto created from approved quotation " + q.get("quotation_no", ""), "source": "Approved Quotation", "status": "Active", "client_email": q.get("client_email", user_email), "created_by": user_email, "created_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")}); break
-            save_json(QUOTATION_FILE, quotations); save_json(ROC_FILE, contracts); flash("Quotation approved and rate added to ROC successfully.", "success")
-        return redirect(url_for("documents.quotation"))
-    ctx = common_context(QUOTATION_FILE, "QT"); ctx["quotations"] = visible_data(quotations)
-    return render_template("documents/quotation.html", **ctx)
+            return redirect(url_for("documents.quotation"))
+
+    return render_template(
+        "documents/quotation.html",
+        quotations=visible_data(quotations),
+        customers=customers,
+        contracts=visible_data(contracts),
+        doc_no=generate_doc_no("QT", quotations)
+    )
 
 
 @documents_bp.route("/proforma", methods=["GET", "POST"])
 @login_required
 def proforma():
     proformas = load_json(PROFORMA_FILE)
+    contracts = load_roc()
+    customers = get_customer_names()
+    user_email = current_user_email()
+
     if request.method == "POST":
-        save_document(PROFORMA_FILE, "proforma_no", "PI", "Pending")
+        proforma_no = request.form.get("proforma_no", "").strip() or generate_doc_no("PI", proformas)
+
+        proformas.insert(0, {
+            "id": uuid.uuid4().hex,
+            "proforma_no": proforma_no,
+            "customer_name": request.form.get("customer_name", "").strip(),
+            "product_name": request.form.get("product_name", "").strip(),
+            "hsn_code": request.form.get("hsn_code", "").strip(),
+            "unit": request.form.get("unit", "").strip(),
+            "qty": request.form.get("qty", "1").strip(),
+            "rate": request.form.get("rate", "0").strip(),
+            "gst_percent": request.form.get("gst_percent", "0").strip(),
+            "taxable_amount": request.form.get("taxable_amount", "0").strip(),
+            "cgst": request.form.get("cgst", "0").strip(),
+            "sgst": request.form.get("sgst", "0").strip(),
+            "igst": request.form.get("igst", "0").strip(),
+            "total_gst": request.form.get("total_gst", "0").strip(),
+            "grand_total": request.form.get("grand_total", "0").strip(),
+            "status": "Pending",
+            "client_email": user_email,
+            "created_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")
+        })
+
+        save_json(PROFORMA_FILE, proformas)
         flash("Proforma invoice saved successfully.", "success")
         return redirect(url_for("documents.proforma"))
-    ctx = common_context(PROFORMA_FILE, "PI"); ctx["proformas"] = visible_data(proformas)
-    return render_template("documents/proforma.html", **ctx)
+
+    return render_template(
+        "documents/proforma.html",
+        proformas=visible_data(proformas),
+        customers=customers,
+        contracts=visible_data(contracts),
+        doc_no=generate_doc_no("PI", proformas)
+    )
 
 
 @documents_bp.route("/invoice", methods=["GET", "POST"])
 @login_required
 def invoice():
     invoices = load_json(INVOICE_FILE)
+    contracts = load_roc()
+    customers = get_customer_names()
+    user_email = current_user_email()
+
     if request.method == "POST":
-        save_document(INVOICE_FILE, "invoice_no", "INV", "Generated")
+        invoice_no = request.form.get("invoice_no", "").strip() or generate_doc_no("INV", invoices)
+
+        invoices.insert(0, {
+            "id": uuid.uuid4().hex,
+            "invoice_no": invoice_no,
+            "document_date": request.form.get("document_date", "").strip(),
+            "due_date": request.form.get("due_date", "").strip(),
+            "po_number": request.form.get("po_number", "").strip(),
+            "po_date": request.form.get("po_date", "").strip(),
+            "place_of_supply": request.form.get("place_of_supply", "").strip(),
+            "payment_terms": request.form.get("payment_terms", "").strip(),
+
+            "customer_name": request.form.get("customer_name", "").strip(),
+            "customer_gst": request.form.get("customer_gst", "").strip(),
+            "customer_pan": request.form.get("customer_pan", "").strip(),
+            "customer_email": request.form.get("customer_email", "").strip(),
+            "customer_mobile": request.form.get("customer_mobile", "").strip(),
+            "customer_address": request.form.get("customer_address", "").strip(),
+
+            "product_name": request.form.get("product_name", "").strip(),
+            "description": request.form.get("description", "").strip(),
+            "hsn_code": request.form.get("hsn_code", "").strip(),
+            "unit": request.form.get("unit", "").strip(),
+            "qty": request.form.get("qty", "1").strip(),
+            "rate": request.form.get("rate", "0").strip(),
+            "discount": request.form.get("discount", "0").strip(),
+            "gst_percent": request.form.get("gst_percent", "0").strip(),
+
+            "taxable_amount": request.form.get("taxable_amount", "0").strip(),
+            "cgst": request.form.get("cgst", "0").strip(),
+            "sgst": request.form.get("sgst", "0").strip(),
+            "igst": request.form.get("igst", "0").strip(),
+            "total_gst": request.form.get("total_gst", "0").strip(),
+            "grand_total": request.form.get("grand_total", "0").strip(),
+
+            "terms": request.form.get("terms", "").strip(),
+            "notes": request.form.get("notes", "").strip(),
+
+            "status": "Generated",
+            "client_email": user_email,
+            "created_by": user_email,
+            "created_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")
+        })
+
+        save_json(INVOICE_FILE, invoices)
         flash("Tax invoice saved successfully.", "success")
         return redirect(url_for("documents.invoice"))
-    ctx = common_context(INVOICE_FILE, "INV"); ctx["invoices"] = visible_data(invoices)
-    return render_template("documents/invoice.html", **ctx)
 
-
-@documents_bp.route("/invoice/preview")
-@login_required
-def invoice_preview():
-    return render_template("invoice/professional_invoice.html")
+    return render_template(
+        "documents/invoice.html",
+        invoices=visible_data(invoices),
+        customers=customers,
+        contracts=visible_data(contracts),
+        doc_no=generate_doc_no("INV", invoices)
+    )
 
 
 @documents_bp.route("/delivery-challan", methods=["GET", "POST"])
 @login_required
 def delivery_challan():
     challans = load_json(DELIVERY_CHALLAN_FILE)
+    contracts = load_roc()
+    customers = get_customer_names()
+    user_email = current_user_email()
+
     if request.method == "POST":
-        save_document(DELIVERY_CHALLAN_FILE, "challan_no", "DC", "Generated")
+        challan_no = request.form.get("challan_no", "").strip() or generate_doc_no("DC", challans)
+
+        challans.insert(0, {
+            "id": uuid.uuid4().hex,
+            "challan_no": challan_no,
+            "customer_name": request.form.get("customer_name", "").strip(),
+            "product_name": request.form.get("product_name", "").strip(),
+            "hsn_code": request.form.get("hsn_code", "").strip(),
+            "unit": request.form.get("unit", "").strip(),
+            "qty": request.form.get("qty", "1").strip(),
+            "client_email": user_email,
+            "created_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")
+        })
+
+        save_json(DELIVERY_CHALLAN_FILE, challans)
         flash("Delivery challan saved successfully.", "success")
         return redirect(url_for("documents.delivery_challan"))
-    ctx = common_context(DELIVERY_CHALLAN_FILE, "DC"); ctx["challans"] = visible_data(challans)
-    return render_template("documents/delivery_challan.html", **ctx)
 
-
-@documents_bp.route("/receipts")
-@login_required
-def receipts(): return render_template("documents/receipts.html")
-
-
-@documents_bp.route("/credit-note")
-@login_required
-def credit_note(): return render_template("documents/credit_note.html")
+    return render_template(
+        "documents/delivery_challan.html",
+        challans=visible_data(challans),
+        customers=customers,
+        contracts=visible_data(contracts),
+        doc_no=generate_doc_no("DC", challans)
+    )
