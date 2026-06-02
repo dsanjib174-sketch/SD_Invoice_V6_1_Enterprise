@@ -4,32 +4,17 @@
 <section>
   <h2>Rate of Contract</h2>
 
-  <h3>1. Vendor Details</h3>
-
-  <form method="POST" class="grid">
-    <input type="hidden" name="action" value="save_vendor">
-
-    <input name="vendor_name" placeholder="Vendor Name" required>
-    <input name="vendor_email" placeholder="Vendor Email">
-    <input name="vendor_mobile" placeholder="Vendor Mobile">
-    <input name="vendor_gst" placeholder="Vendor GST No">
-    <input name="vendor_pan" placeholder="Vendor PAN No">
-    <input name="vendor_address" placeholder="Vendor Address">
-
-    <button type="submit">Save Vendor</button>
-  </form>
-
-  <br>
-
-  <h3>2. Rate Contract Details</h3>
-
   <form method="POST" class="grid">
     <input type="hidden" name="action" value="save_contract">
+
+    <h3>1. Customer Details</h3>
 
     <select id="customerSelect" name="customer_name" required>
       <option value="">Select Customer</option>
       {% for c in customers %}
       <option value="{{ c.company_name }}"
+              data-email="{{ c.customer_email }}"
+              data-mobile="{{ c.customer_mobile }}"
               data-gst="{{ c.gst_number }}"
               data-pan="{{ c.pan_number }}"
               data-address="{{ c.customer_address }}">
@@ -38,16 +23,13 @@
       {% endfor %}
     </select>
 
+    <input id="customerEmail" name="customer_email" placeholder="Customer Email" readonly>
+    <input id="customerMobile" name="customer_mobile" placeholder="Customer Mobile" readonly>
     <input id="customerGst" name="customer_gst" placeholder="Customer GST Number" readonly>
     <input id="customerPan" name="customer_pan" placeholder="Customer PAN Number" readonly>
     <textarea id="customerAddress" name="customer_address" placeholder="Customer Address" readonly></textarea>
 
-    <select name="vendor_name" required>
-      <option value="">Select Vendor</option>
-      {% for v in vendors %}
-      <option value="{{ v.vendor_name }}">{{ v.vendor_name }}</option>
-      {% endfor %}
-    </select>
+    <h3>2. Product / Rate Details</h3>
 
     <input name="product_name" placeholder="Product / Service Name" required>
     <input name="hsn_code" placeholder="HSN / SAC Code">
@@ -68,9 +50,10 @@
   <table border="1" cellpadding="8" cellspacing="0" width="100%">
     <tr>
       <th>Customer</th>
+      <th>Email</th>
+      <th>Mobile</th>
       <th>GST</th>
       <th>PAN</th>
-      <th>Vendor</th>
       <th>Product / Service</th>
       <th>HSN/SAC</th>
       <th>Unit</th>
@@ -91,10 +74,10 @@
           <input type="hidden" name="contract_id" value="{{ c.id }}">
 
           <td><input name="customer_name" value="{{ c.customer_name }}"></td>
+          <td><input name="customer_email" value="{{ c.customer_email }}"></td>
+          <td><input name="customer_mobile" value="{{ c.customer_mobile }}"></td>
           <td><input name="customer_gst" value="{{ c.customer_gst }}"></td>
           <td><input name="customer_pan" value="{{ c.customer_pan }}"></td>
-
-          <td><input name="vendor_name" value="{{ c.vendor_name }}" required></td>
           <td><input name="product_name" value="{{ c.product_name }}" required></td>
           <td><input name="hsn_code" value="{{ c.hsn_code }}"></td>
           <td><input name="unit" value="{{ c.unit }}"></td>
@@ -117,7 +100,7 @@
       {% endfor %}
     {% else %}
       <tr>
-        <td colspan="14">No contracts found.</td>
+        <td colspan="15">No contracts found.</td>
       </tr>
     {% endif %}
   </table>
@@ -127,6 +110,8 @@
 document.getElementById("customerSelect").addEventListener("change", function () {
   const selected = this.options[this.selectedIndex];
 
+  document.getElementById("customerEmail").value = selected.dataset.email || "";
+  document.getElementById("customerMobile").value = selected.dataset.mobile || "";
   document.getElementById("customerGst").value = selected.dataset.gst || "";
   document.getElementById("customerPan").value = selected.dataset.pan || "";
   document.getElementById("customerAddress").value = selected.dataset.address || "";
